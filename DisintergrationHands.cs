@@ -13,11 +13,10 @@ using XRL.Rules;
 using XRL.UI;
 using XRL.World.Capabilities;
 using XRL.World.Effects;
-
 namespace XRL.World.Parts.Mutation
 {
   [Serializable]
-  public class DisintergrationHands : BaseMutation
+  public class DisintergrationHands : BaseMutation //BaseDefaultEquipmentMutation if an equiped physical
   {
     public Guid ActivatedAbilityID = Guid.Empty;
 
@@ -46,12 +45,15 @@ namespace XRL.World.Parts.Mutation
 
     public override string GetDescription() => "You disintegrate nearby matter.";
 
-    public override string GetLevelText(int Level) => "" + "Area: 3x3 around self\n" + "Damage to non-structural objects: {{rules|" + Level.ToString() + "d100+" + (2 * Level).ToString() + "}}\n" + "Damage to structural objects: {{rules|" + Level.ToString() + "d100+20}}\n" 
-    + "Cooldown: 10 rounds";
+    public override string GetLevelText(int Level) => "" + " random area around self, maximum range determined by level\n" + "Damage to non-structural objects: {{rules|" + Level.ToString() + "2d30+"  + "}}\n" + "Damage to structural objects: {{rules|" +  Level.ToString() + "2d30}}\n" 
+    + "Cooldown: " + (20 - Level).ToString() +"rounds";
 
-    public static void Disintegrate(
+
+
+   
+
+public static void Disintegrate(
       Cell C,
-      int Radius,
       int Level,
       GameObject immunity,
       GameObject owner = null,
@@ -59,60 +61,51 @@ namespace XRL.World.Parts.Mutation
       bool lowPrecision = false,
       bool indirect = false)
     {
+         string str1 = Level.ToString() + "2d30" ;
+      string str2 = Level.ToString() + "2d30" ;
+      bool flag2 = lowPrecision;
       TextConsole textConsole = Look._TextConsole;
       ScreenBuffer scrapBuffer = TextConsole.ScrapBuffer;
       XRLCore.Core.RenderMapToBuffer(scrapBuffer);
       if (owner == null)
         owner = immunity;
       int phase = Phase.getPhase(source ?? owner);
-      List<Cell> Return = new List<Cell>();
-      C.GetAdjacentCells(Radius, Return, false);
       bool flag1 = false;
-      if (C.ParentZone != null && C.ParentZone.IsActive())
+      if (C!= null)
       {
-        for (int index = 0; index < Radius; ++index)
-        {
-          foreach (Cell cell in Return)
+    
+          foreach (GameObject gameObject in C.GetObjectsInCell())
           {
-            if (cell.ParentZone == C.ParentZone && cell.IsVisible())
-            {
-              flag1 = true;
-              if (Radius < 3 || cell.PathDistanceTo(C) <= index - Stat.Random(0, 1) && cell.PathDistanceTo(C) > index - Stat.Random(2, 3))
-              {
-                scrapBuffer.Goto(cell.X, cell.Y);
+          
+                scrapBuffer.Goto(gameObject);
                 scrapBuffer.Write("&" + Phase.getRandomDisintegrationColor(phase).ToString() + ((char) Stat.Random(191, 198)).ToString());
-              }
-            }
-          }
-          if (flag1)
-          {
-            textConsole.DrawBuffer(scrapBuffer);
-            Thread.Sleep(10);
-          }
-        }
-      }
-      if (Return.Count > 0 && owner != null && owner.pPhysics != null)
+                    if (gameObject.Count > 0 && owner != null && owner.pPhysics != null)
         owner.pPhysics.PlayWorldSound("disintegration", combat: true);
-      string str1 = Level.ToString() + "d100+" + (2 * Level).ToString();
-      string str2 = Level.ToString() + "d100";
-      bool flag2 = lowPrecision;
-      if (!flag2 && owner != null)
+   
+        if (!flag2 && owner != null)
       {
-        foreach (Cell cell in Return)
-        {
-          if (cell.HasObject(new Predicate<GameObject>(owner.IsRegardedWithHostilityBy)))
-          {
+       
+     
             flag2 = true;
             break;
-          }
-        }
+          
+        
       }
-      foreach (Cell cell in Return)
-      {
-        foreach (GameObject gameObject1 in cell.GetObjectsInCell())
+            
+          }
+         
+            textConsole.DrawBuffer(scrapBuffer);
+            Thread.Sleep(75);
+          
+        
+      }
+  
+    
+        foreach (GameObject gameObject1 in C.GetObjectsInCell())
         {
           if (gameObject1 != immunity && gameObject1.PhaseMatches(phase) && gameObject1.GetMatterPhase() <= 3 && gameObject1.GetIntProperty("Electromagnetic") <= 0)
           {
+         
             string Dice = gameObject1.HasPart("Inorganic") ? str2 : str1;
             GameObject gameObject2 = gameObject1;
             int Amount = Dice.RollCached();
@@ -121,17 +114,19 @@ namespace XRL.World.Parts.Mutation
             GameObject Source = source;
             int num1 = flag3 ? 1 : 0;
             int num2 = indirect ? 1 : 0;
-            gameObject2.TakeDamage(Amount, "from %t DisintergrationHands!", nameof (DisintergrationHands), Owner: Owner, Source: Source, Accidental: (num1 != 0), Indirect: (num2 != 0));
+            gameObject2.TakeDamage(Amount, "from %t disintegration!", nameof (Disintegration), Owner: Owner, Source: Source, Accidental: (num1 != 0), Indirect: (num2 != 0));
           }
         }
-      }
+      
     }
 
     public override bool FireEvent(Event E)
     {
+      DisintergrationHands mutation = null;
+      //ai use of mutation
       if (E.ID == "AIGetOffensiveMutationList")
       {
-        if (E.GetIntParameter("Distance") <= 3 && this.IsMyActivatedAbilityAIUsable(this.ActivatedAbilityID))
+        if (E.GetIntParameter("Distance") <= 3+ this.Level && this.IsMyActivatedAbilityAIUsable(this.ActivatedAbilityID))
         {
           Cell currentCell = this.ParentObject.CurrentCell;
           if (currentCell != null)
@@ -140,7 +135,7 @@ namespace XRL.World.Parts.Mutation
             bool flag2 = true;
             if (this.ParentObject.pBrain != null)
             {
-              foreach (GameObject GO in currentCell.ParentZone.FastSquareVisibility(currentCell.X, currentCell.Y, 4, "Combat", this.ParentObject))
+              foreach (GameObject GO in currentCell.ParentZone.FastSquareVisibility(currentCell.X, currentCell.Y, 4+this.Level, "Combat", this.ParentObject))
               {
                 if (GO != this.ParentObject)
                 {
@@ -158,15 +153,54 @@ namespace XRL.World.Parts.Mutation
           }
         }
       }
+      
+      //player call
       else if (E.ID == "CommandDisintergrationHands")
-      {
-        Cell currentCell = this.ParentObject.GetCurrentCell();
+      {     
+        int rangecap;
+        if (this.Level>10)
+        {
+           rangecap = 10;
+
+
+        }
+        else{
+          rangecap = this.Level;
+        }  
+        
+
+
+     
+ 
+
+       // List<Cell> cellList = this.PickBurst(3, 8, false, AllowVis.OnlyVisible);
+
+      List<Cell> cellList = this.PickLine(rangecap, AllowVis.Any, IgnoreLOS: true, Snap: true); // cell list is just what the user picks here
+
+
+
+
+
         if (currentCell == null)
           return false;
-        DisintergrationHands.Disintegrate(currentCell, 3, this.Level, this.ParentObject);
-        this.CooldownMyActivatedAbility(this.ActivatedAbilityID, 3);
-        this.UseEnergy(1000);
+             int index1 = 0;
+            for (int index2 = Math.Min(cellList.Count, 10); index1 < index2; ++index1)
+      {
+
+        if (cellList.Count == 1 || cellList[index1] != this.ParentObject.CurrentCell)
+         DisintergrationHands.Disintegrate(cellList[index1],  this.Level, this.ParentObject);
+        if (index1 < index2 - 1 && cellList[index1].IsSolidFor((GameObject) null, this.ParentObject))
+          break;
       }
+
+
+       
+       
+        
+        this.CooldownMyActivatedAbility(this.ActivatedAbilityID, (20 - this.Level));
+        this.UseEnergy(100);
+      }
+      
       return base.FireEvent(E);
     }
 
@@ -184,4 +218,5 @@ namespace XRL.World.Parts.Mutation
       return base.Unmutate(GO);
     }
   }
-}
+  }
+
