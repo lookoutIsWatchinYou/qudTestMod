@@ -1,8 +1,6 @@
 // Decompiled with JetBrains decompiler
 // Type: XRL.World.Parts.Mutation.DisintergrationHands
 // Assembly: Assembly-CSharp, Version=2.0.203.30, Culture=neutral, PublicKeyToken=null
-// MVID: 4F307A10-530B-4D54-95B1-BBE58653F7D8
-// Assembly location: F:\SteamLibrary\steamapps\common\Caves of Qud\CoQ_Data\Managed\Assembly-CSharp.dll
 
 using ConsoleLib.Console;
 using System;
@@ -16,15 +14,21 @@ using XRL.World.Effects;
 namespace XRL.World.Parts.Mutation
 {
   [Serializable]
-  public class DisintergrationHands : BaseMutation //BaseDefaultEquipmentMutation if an equiped physical
+  public class DisintergrationHands : BaseDefaultEquipmentMutation //BaseDefaultEquipmentMutation if an equiped physical
   {
+    public string BodyPartType = "Hands";
+
+
+    public bool CreateObject = true;
+
     public Guid ActivatedAbilityID = Guid.Empty;
 
     public DisintergrationHands()
     {
-      this.DisplayName = nameof (DisintergrationHands);
-      this.Type = "Mental";
+      this.DisplayName ="Disintergration Hands";
+      this.Type = "Physical";
     }
+    public override bool GeneratesEquipment() => true;
 
     public override bool WantEvent(int ID, int cascade) => base.WantEvent(ID, cascade) || ID == GetItemElementsEvent.ID;
 
@@ -34,7 +38,6 @@ namespace XRL.World.Parts.Mutation
       return base.HandleEvent(E);
     }
 
-    public override bool AllowStaticRegistration() => true;
 
     public override void Register(GameObject Object)
     {
@@ -43,9 +46,12 @@ namespace XRL.World.Parts.Mutation
       base.Register(Object);
     }
 
-    public override string GetDescription() => "You disintegrate nearby matter.";
-
-    public override string GetLevelText(int Level) => "" + " random area around self, maximum range determined by level\n" + "Damage to non-structural objects: {{rules|" + Level.ToString() + "2d30+"  + "}}\n" + "Damage to structural objects: {{rules|" +  Level.ToString() + "2d30}}\n" 
+public override string GetDescription()
+    {
+      BodyPart registeredSlot = this.GetRegisteredSlot(this.BodyPartType, true);
+      return registeredSlot != null ? "You emit a blast of  Disintergration"  + "." : "You emit a blast of Disintergration.";
+    }
+    public override string GetLevelText(int Level) => "" + " fixed line , maximum range determined by level\n" + "Damage to non-structural objects: {{rules|" + Level.ToString() + "2d30+"  + "}}\n" 
     + "Cooldown: " + (20 - Level).ToString() +"rounds";
 
 
@@ -57,6 +63,7 @@ public static void Disintegrate(
       int Level,
       GameObject immunity,
       GameObject owner = null,
+      bool noObjects = true,
       GameObject source = null,
       bool lowPrecision = false,
       bool indirect = false)
@@ -71,16 +78,18 @@ public static void Disintegrate(
         owner = immunity;
       int phase = Phase.getPhase(source ?? owner);
       bool flag1 = false;
-      if (C!= null)
+      if (C!= null )
       {
+    //WILL OFC ONLY TARGET OBJECTS
     
-          foreach (GameObject gameObject in C.GetObjectsInCell())
+          foreach (GameObject gameObject1 in C.GetObjectsInCell())
           {
-          
-                scrapBuffer.Goto(gameObject);
+                 
+                scrapBuffer.Goto(gameObject1);
                 scrapBuffer.Write("&" + Phase.getRandomDisintegrationColor(phase).ToString() + ((char) Stat.Random(191, 198)).ToString());
-                    if (gameObject.Count > 0 && owner != null && owner.pPhysics != null)
-        owner.pPhysics.PlayWorldSound("disintegration", combat: true);
+                owner.pPhysics.PlayWorldSound("disintegration", combat: true);
+                noObjects = false;
+
    
         if (!flag2 && owner != null)
       {
@@ -93,7 +102,14 @@ public static void Disintegrate(
       }
             
           }
-         
+          //added check to see if we have objects in target, if not we paint map anyway if we do its already been painted so we dont
+          if (noObjects){
+          
+            scrapBuffer.Goto(C.X, C.Y);
+            scrapBuffer.Write("&" + Phase.getRandomDisintegrationColor(phase).ToString() + ((char) Stat.Random(191, 198)).ToString());
+             owner.pPhysics.PlayWorldSound("disintegration", combat: true);
+          }
+          
             textConsole.DrawBuffer(scrapBuffer);
             Thread.Sleep(75);
           
@@ -120,13 +136,19 @@ public static void Disintegrate(
       
     }
 
+    public bool CheckObjectProperlyEquipped()
+    {
+      if (!this.CreateObject)
+        return true;
+      return this.HasRegisteredSlot(this.BodyPartType) && this.GetRegisteredSlot(this.BodyPartType, false) != null;
+    }
     public override bool FireEvent(Event E)
     {
       DisintergrationHands mutation = null;
       //ai use of mutation
       if (E.ID == "AIGetOffensiveMutationList")
       {
-        if (E.GetIntParameter("Distance") <= 3+ this.Level && this.IsMyActivatedAbilityAIUsable(this.ActivatedAbilityID))
+        if (E.GetIntParameter("Distance") <= 1 && this.IsMyActivatedAbilityAIUsable(this.ActivatedAbilityID)&& this.CheckObjectProperlyEquipped())
         {
           Cell currentCell = this.ParentObject.CurrentCell;
           if (currentCell != null)
@@ -157,6 +179,14 @@ public static void Disintegrate(
       //player call
       else if (E.ID == "CommandDisintergrationHands")
       {     
+        if (!this.CheckObjectProperlyEquipped())
+        {
+          if (this.ParentObject.IsPlayer())
+            Popup.ShowFail("Your " + this.BodyPartType + " is too damaged to do that!");
+          return false;
+        }
+        else{
+
         int rangecap;
         if (this.Level>10)
         {
@@ -169,17 +199,14 @@ public static void Disintegrate(
         }  
         
 
-
-     
- 
-
        // List<Cell> cellList = this.PickBurst(3, 8, false, AllowVis.OnlyVisible);
 
       List<Cell> cellList = this.PickLine(rangecap, AllowVis.Any, IgnoreLOS: true, Snap: true); // cell list is just what the user picks here
 
 
 
-
+ ScreenBuffer scrapBuffer1 = ScreenBuffer.GetScrapBuffer1(true);
+      XRLCore.Core.RenderMapToBuffer(scrapBuffer1);
 
         if (currentCell == null)
           return false;
@@ -187,9 +214,9 @@ public static void Disintegrate(
             for (int index2 = Math.Min(cellList.Count, 10); index1 < index2; ++index1)
       {
 
-        if (cellList.Count == 1 || cellList[index1] != this.ParentObject.CurrentCell)
+        if (cellList.Count == 1 || cellList[index1] != this.ParentObject.CurrentCell )
          DisintergrationHands.Disintegrate(cellList[index1],  this.Level, this.ParentObject);
-        if (index1 < index2 - 1 && cellList[index1].IsSolidFor((GameObject) null, this.ParentObject))
+        if (index1 < index2 - 1 && cellList[index1].IsSolidFor((GameObject) null, this.ParentObject) ||index1>rangecap)
           break;
       }
 
@@ -199,16 +226,72 @@ public static void Disintegrate(
         
         this.CooldownMyActivatedAbility(this.ActivatedAbilityID, (20 - this.Level));
         this.UseEnergy(100);
-      }
+      }}
       
       return base.FireEvent(E);
     }
 
+
+
+
     public override bool ChangeLevel(int NewLevel) => base.ChangeLevel(NewLevel);
+
+    
+    public override void OnRegenerateDefaultEquipment(Body body) => base.OnRegenerateDefaultEquipment(body);
+
+
+
+    public void MakeFlickering(BodyPart part)
+    {
+      if (part == null)
+        return;
+      if (part.DefaultBehavior != null && part.DefaultBehavior.Blueprint != "Disintergration flickers" && !part.DefaultBehavior.pRender.DisplayName.Contains("{{Flickering}"))
+        part.DefaultBehavior.pRender.DisplayName = "{{Flickering}} " + part.DefaultBehavior.pRender.DisplayName;
+      if (part.Parts == null)
+        return;
+      for (int index = 0; index < part.Parts.Count; ++index)
+        this.MakeFlickering(part.Parts[index]);
+    }
+
+
+  public override void OnDecorateDefaultEquipment(Body body)
+    {
+      if (this.CreateObject)
+      {
+        BodyPart part1;
+        if (!this.HasRegisteredSlot(this.BodyPartType))
+        {
+          part1 = body.GetFirstPart(this.BodyPartType);
+          if (part1 != null)
+            this.RegisterSlot(this.BodyPartType, part1);
+        }
+        else
+          part1 = this.GetRegisteredSlot(this.BodyPartType, false);
+        if (part1 != null && part1.DefaultBehavior == null)
+        {
+          GameObject gameObject = GameObject.create("Disintergration Flickers");
+          gameObject.GetPart<Armor>().WornOn = this.BodyPartType;
+          part1.DefaultBehavior = gameObject;
+        }
+        this.MakeFlickering(part1);
+        if (this.BodyPartType == "Hands")
+        {
+          foreach (BodyPart part2 in body.GetParts())
+          {
+            if (part2.Type == "Hand")
+              this.MakeFlickering(part2);
+          }
+        }
+      }
+      base.OnDecorateDefaultEquipment(body);
+    }
+
+
+
 
     public override bool Mutate(GameObject GO, int Level)
     {
-      this.ActivatedAbilityID = this.AddMyActivatedAbility(nameof (DisintergrationHands), "CommandDisintergrationHands", "Mental Mutation", Icon: "ê");
+      this.ActivatedAbilityID = this.AddMyActivatedAbility(nameof (DisintergrationHands), "CommandDisintergrationHands", "Physical Mutation", Icon: "ê");
       return base.Mutate(GO, Level);
     }
 
